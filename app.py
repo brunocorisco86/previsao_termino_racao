@@ -111,6 +111,20 @@ if uploaded_file is not None:
         value=25000
     )
 
+    st.sidebar.subheader("Parâmetros de Sobra de Ração")
+    idade_diluicao_start = st.sidebar.number_input(
+        "Idade de Diluição da Sobra (dias)",
+        min_value=0,
+        value=19,
+        help="A sobra de ração será considerada até esta idade do lote."
+    )
+    sobra_inicial_kg = st.sidebar.number_input(
+        "Sobra Inicial de Ração (kg)",
+        min_value=0.0,
+        value=0.0, # Default to 0, will be updated if conditions met
+        help="Valor de ração remanescente do lote anterior. Será preenchido automaticamente se detectado."
+    )
+
     if st.sidebar.button("Executar Projeção"):
         if data_alojamento is None:
             st.error("Por favor, selecione a Data de Alojamento.")
@@ -123,11 +137,13 @@ if uploaded_file is not None:
                     reports_folder=reports_folder
                 )
                 
-                report_string, plot_fig = forecaster.run_forecast(
+                report_string, plot_fig, df_entregas = forecaster.run_forecast(
                     aviario_selecionado=aviario_selecionado,
                     data_alojamento=data_alojamento,
                     linhagem=linhagem,
-                    n_aves=n_aves # Use o número de aves original
+                    n_aves=n_aves,
+                    idade_diluicao_start=idade_diluicao_start,
+                    sobra_inicial_kg=sobra_inicial_kg
                 )
 
                 st.success("Projeção concluída com sucesso!")
@@ -137,16 +153,33 @@ if uploaded_file is not None:
                 
                 # Example parsing (this can be made more robust)
                 peso_atual_match = re.search(r"- Peso Atual no Silo: (\d+\.\d{2}) kg", report_string)
+                idade_atual_match = re.search(r"- Idade Atual do Lote: (\d+) dias", report_string)
                 autonomia_match = re.search(r"- Autonomia Estimada: (\d+) dias e (\d+) horas", report_string)
                 esgotamento_match = re.search(r"- Data Estimada de Esgotamento: (.*)", report_string)
+                idade_esgotamento_match = re.search(r"- Idade Estimada de Esgotamento: (\d+) dias", report_string)
 
+                # Row 1: Peso Atual, Idade Atual, Autonomia
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     if peso_atual_match: st.metric("Peso Atual no Silo", f"{peso_atual_match.group(1)} kg")
                 with col2:
-                    if autonomia_match: st.metric("Autonomia Estimada", f"{autonomia_match.group(1)} dias e {autonomia_match.group(2)} horas")
+                    if idade_atual_match: st.metric("Idade Atual do Lote", f"{idade_atual_match.group(1)} dias")
                 with col3:
+                    if autonomia_match: st.metric("Autonomia Estimada", f"{autonomia_match.group(1)} dias e {autonomia_match.group(2)} horas")
+
+                # Row 2: Data de Esgotamento, Idade de Esgotamento
+                col4, col5 = st.columns(2)
+                with col4:
                     if esgotamento_match: st.metric("Data de Esgotamento", esgotamento_match.group(1))
+                with col5:
+                    if idade_esgotamento_match: st.metric("Idade de Esgotamento", f"{idade_esgotamento_match.group(1)} dias")
+
+                # Row 3: Somatório de Ração Entregue
+                col6, = st.columns(1) # Single column for this metric
+                with col6:
+                    if not df_entregas.empty:
+                        total_delivered_feed = df_entregas['quantidade_kg'].sum()
+                        st.metric("Total Ração Entregue", f"{total_delivered_feed:,.0f} kg".replace(",", "."))
 
                 st.markdown("## Resultados Detalhados")
                 tab1, tab2, tab3 = st.tabs(["Gráfico de Projeção", "Relatório Completo", "Dados Processados"]) # Added tab3
@@ -190,7 +223,9 @@ if uploaded_file is not None:
                             aviario_selecionado=av_num,
                             data_alojamento=data_alojamento, # Using the selected date for all
                             linhagem=linhagem,               # Using the selected lineage for all
-                            n_aves=n_aves                    # Using the selected n_aves for all
+                            n_aves=n_aves,                   # Using the selected n_aves for all
+                            idade_diluicao_start=idade_diluicao_start,
+                            sobra_inicial_kg=sobra_inicial_kg
                         )
                         forecaster_instances_for_pdf[av_num] = temp_forecaster
                     except Exception as e:
