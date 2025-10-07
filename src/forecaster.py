@@ -45,11 +45,19 @@ class SiloForecaster:
             df_hourly = pd.DataFrame()
             resampled = df_filtrado.groupby('channel')['value'].resample('h').mean()
             df_hourly['peso_silo'] = resampled.unstack(level='channel').sum(axis=1)
-            df_hourly.dropna(inplace=True)
-            self.df_hourly = df_hourly
+            
+            # Filtro para remover ruído de quedas abruptas para zero
+            # Substitui 0 por NaN para interpolação
+            df_hourly['peso_silo'].replace(0, np.nan, inplace=True)
+            # Interpola os valores NaN, preenchendo no máximo 3 horas consecutivas
+            df_hourly['peso_silo'].interpolate(method='linear', limit_direction='forward', limit=3, inplace=True)
 
-            # Adicionar a coluna 'idade' ao self.df_hourly
-            self.df_hourly['idade'] = (self.df_hourly.index.normalize() - pd.Timestamp(self.data_alojamento)).days + 1
+            df_hourly.dropna(inplace=True)
+            
+            # Adicionar a coluna 'idade' ao df_hourly
+            df_hourly['idade'] = (df_hourly.index.normalize() - pd.Timestamp(self.data_alojamento)).days + 1
+
+            self.df_hourly = df_hourly
 
             # Calcular autonomia
             self._project_autonomy()
