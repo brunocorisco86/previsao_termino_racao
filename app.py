@@ -3,7 +3,7 @@ import pandas as pd
 from src.data_handler import importar_sensores, importar_consumo
 from src.forecaster import SiloForecaster
 import os
-from datetime import date
+from datetime import date, datetime
 import traceback
 import matplotlib.pyplot as plt
 import re
@@ -81,7 +81,7 @@ if uploaded_file is not None:
         st.error("O arquivo CSV carregado não contém a coluna 'Collector' ou 'Coletor'. Verifique o formato do arquivo.")
         st.stop()
 
-    df_sensores_completo['aviario_num'] = pd.to_numeric(df_sensores_completo['collector'].str.extract('(\d+)', expand=False), errors='coerce')
+    df_sensores_completo['aviario_num'] = pd.to_numeric(df_sensores_completo['collector'].str.extract(r'(\d+)', expand=False), errors='coerce')
     df_sensores_completo.dropna(subset=['aviario_num'], inplace=True)
     df_sensores_completo['aviario_num'] = df_sensores_completo['aviario_num'].astype(int)
     
@@ -125,81 +125,138 @@ if uploaded_file is not None:
         help="Valor de ração remanescente do lote anterior. Será preenchido automaticamente se detectado."
     )
 
-    if st.sidebar.button("Executar Projeção"):
-        if data_alojamento is None:
-            st.error("Por favor, selecione a Data de Alojamento.")
-        else:
-            try:
-                # Instantiate and run the forecaster
-                forecaster = SiloForecaster(
-                    df_sensores=df_sensores_completo, 
-                    linhagem_folder=linhagem_folder, 
-                    reports_folder=reports_folder
-                )
+    st.sidebar.subheader("Parâmetros do Abate")
+    data_abate = st.sidebar.date_input(
+        "Data do Abate",
+        value=None
+    )
+    hora_abate = st.sidebar.time_input(
+        "Hora do Abate"
+    )
+    jejum_horas = st.sidebar.number_input(
+        "Horas de Jejum",
+        min_value=4,
+        max_value=6,
+        value=4
+    )
+
+    # --- Session State for Forecaster ---
+    if 'forecaster' not in st.session_state:
+        st.session_state.forecaster = None
+
+    col1_sidebar, col2_sidebar = st.sidebar.columns(2)
+    with col1_sidebar:
+        if st.button("Executar Projeção"):
+            if data_alojamento is None:
+                st.error("Por favor, selecione a Data de Alojamento.")
+            else:
+                try:
+                    # Instantiate and run the forecaster
+                    forecaster = SiloForecaster(
+                        df_sensores=df_sensores_completo, 
+                        linhagem_folder=linhagem_folder, 
+                        reports_folder=reports_folder
+                    )
+                    
+                    report_string, plot_fig, df_entregas = forecaster.run_forecast(
+                        aviario_selecionado=aviario_selecionado,
+                        data_alojamento=data_alojamento,
+                        linhagem=linhagem,
+                        n_aves=n_aves,
+                        idade_diluicao_start=idade_diluicao_start,
+                        sobra_inicial_kg=sobra_inicial_kg
+                    )
+                    st.session_state.forecaster = forecaster # Save the instance
+                    st.session_state.report_string = report_string
+                    st.session_state.plot_fig = plot_fig
+                    st.session_state.df_entregas = df_entregas
+
+                except Exception as e:
+                    st.error(f"Ocorreu um erro durante a projeção: {e}")
+                    st.exception(e) # Display full traceback for debugging
+    
+    with col2_sidebar:
+        if st.button("Calcular Ração para Abate"):
+            if st.session_state.forecaster is None:
+                st.error("Por favor, execute a projeção primeiro.")
+            elif data_abate is None or hora_abate is None:
+                st.error("Por favor, forneça a data e hora do abate.")
+            else:
+                try:
+                    abate_datetime = datetime.combine(data_abate, hora_abate)
+                    
+                    # Call the new method
+                    (abate_report, abate_plot, 
+                     necessidade_racao, ultima_entrega_necessaria) = st.session_state.forecaster.calculate_abate_feed(
+                        abate_datetime=abate_datetime,
+                        jejum_horas=jejum_horas
+                    )
+                    
+                    st.session_state.abate_report = abate_report
+                    st.session_state.abate_plot = abate_plot
+                    st.session_state.necessidade_racao = necessidade_racao
+                    st.session_state.ultima_entrega_necessaria = ultima_entrega_necessaria
+
+                except Exception as e:
+                    st.error(f"Ocorreu um erro no cálculo para o abate: {e}")
+                    st.exception(e)
+
+    if st.session_state.get('forecaster'):
+        st.success("Projeção carregada.")
+
+        # Display Metrics
+        report_string = st.session_state.report_string
+        plot_fig = st.session_state.plot_fig
+        df_entregas = st.session_state.df_entregas
+        
+        peso_atual_match = re.search(r"- Peso Atual no Silo: (\d+\.\d{2}) kg", report_string)
+        idade_atual_match = re.search(r"- Idade Atual do Lote: (\d+) dias", report_string)
+        autonomia_match = re.search(r"- Autonomia Estimada: (\d+) dias e (\d+) horas", report_string)
+        esgotamento_match = re.search(r"- Data Estimada de Esgotamento: (.*)", report_string)
+        idade_esgotamento_match = re.search(r"- Idade Estimada de Esgotamento: (\d+) dias", report_string)
+
+        col1, col2, col3 = st.columns(3)
+        if peso_atual_match: col1.metric("Peso Atual no Silo", f"{peso_atual_match.group(1)} kg")
+        if idade_atual_match: col2.metric("Idade Atual do Lote", f"{idade_atual_match.group(1)} dias")
+        if autonomia_match: col3.metric("Autonomia Estimada", f"{autonomia_match.group(1)} dias e {autonomia_match.group(2)} horas")
+
+        col4, col5 = st.columns(2)
+        if esgotamento_match: col4.metric("Data de Esgotamento", esgotamento_match.group(1))
+        if idade_esgotamento_match: col5.metric("Idade de Esgotamento", f"{idade_esgotamento_match.group(1)} dias")
+
+        col6, = st.columns(1)
+        if not df_entregas.empty:
+            total_delivered_feed = df_entregas['quantidade_kg'].sum()
+            col6.metric("Total Ração Entregue", f"{total_delivered_feed:,.0f} kg".replace(",", "."))
+
+        st.markdown("## Resultados Detalhados")
+        
+        tab_titles = ["Gráfico de Projeção", "Relatório Completo", "Dados Processados"]
+        if 'abate_report' in st.session_state:
+            tab_titles.append("Projeção para Abate")
+            
+        tabs = st.tabs(tab_titles)
+        
+        with tabs[0]:
+            st.pyplot(plot_fig)
+            plt.close(plot_fig)
+
+        with tabs[1]:
+            st.markdown(report_string)
+
+        with tabs[2]:
+            st.subheader("Dados Horários Processados")
+            st.dataframe(st.session_state.forecaster.df_hourly)
+
+        if "Projeção para Abate" in tab_titles:
+            with tabs[3]:
+                st.subheader("Resultados do Cálculo para Abate")
+                st.metric("Necessidade de Ração até o Jejum", f"{st.session_state.necessidade_racao:,.2f} kg".replace(",", "."))
+                st.metric("Última Entrega de Ração Necessária", f"{st.session_state.ultima_entrega_necessaria:,.2f} kg".replace(",", "."))
                 
-                report_string, plot_fig, df_entregas = forecaster.run_forecast(
-                    aviario_selecionado=aviario_selecionado,
-                    data_alojamento=data_alojamento,
-                    linhagem=linhagem,
-                    n_aves=n_aves,
-                    idade_diluicao_start=idade_diluicao_start,
-                    sobra_inicial_kg=sobra_inicial_kg
-                )
-
-                st.success("Projeção concluída com sucesso!")
-
-                # Display Metrics (extracted from report_string or calculated here)
-                # For now, let's parse from report_string as it's already formatted
-                
-                # Example parsing (this can be made more robust)
-                peso_atual_match = re.search(r"- Peso Atual no Silo: (\d+\.\d{2}) kg", report_string)
-                idade_atual_match = re.search(r"- Idade Atual do Lote: (\d+) dias", report_string)
-                autonomia_match = re.search(r"- Autonomia Estimada: (\d+) dias e (\d+) horas", report_string)
-                esgotamento_match = re.search(r"- Data Estimada de Esgotamento: (.*)", report_string)
-                idade_esgotamento_match = re.search(r"- Idade Estimada de Esgotamento: (\d+) dias", report_string)
-
-                # Row 1: Peso Atual, Idade Atual, Autonomia
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    if peso_atual_match: st.metric("Peso Atual no Silo", f"{peso_atual_match.group(1)} kg")
-                with col2:
-                    if idade_atual_match: st.metric("Idade Atual do Lote", f"{idade_atual_match.group(1)} dias")
-                with col3:
-                    if autonomia_match: st.metric("Autonomia Estimada", f"{autonomia_match.group(1)} dias e {autonomia_match.group(2)} horas")
-
-                # Row 2: Data de Esgotamento, Idade de Esgotamento
-                col4, col5 = st.columns(2)
-                with col4:
-                    if esgotamento_match: st.metric("Data de Esgotamento", esgotamento_match.group(1))
-                with col5:
-                    if idade_esgotamento_match: st.metric("Idade de Esgotamento", f"{idade_esgotamento_match.group(1)} dias")
-
-                # Row 3: Somatório de Ração Entregue
-                col6, = st.columns(1) # Single column for this metric
-                with col6:
-                    if not df_entregas.empty:
-                        total_delivered_feed = df_entregas['quantidade_kg'].sum()
-                        st.metric("Total Ração Entregue", f"{total_delivered_feed:,.0f} kg".replace(",", "."))
-
-                st.markdown("## Resultados Detalhados")
-                tab1, tab2, tab3 = st.tabs(["Gráfico de Projeção", "Relatório Completo", "Dados Processados"]) # Added tab3
-
-                with tab1:
-                    st.pyplot(plot_fig)
-                    plt.close(plot_fig) # Close the figure to free memory
-
-                with tab2:
-                    st.markdown(report_string)
-                    # If you want to display the deliveries table separately, you'd need to return it from forecaster
-                    # For now, it's part of the markdown string.
-
-                with tab3:
-                    st.subheader("Dados Horários Processados")
-                    st.dataframe(forecaster.df_hourly) # Access the processed dataframe from the forecaster instance
-
-            except Exception as e:
-                st.error(f"Ocorreu um erro durante a projeção: {e}")
-                st.exception(e) # Display full traceback for debugging
+                st.markdown(st.session_state.abate_report)
+                st.pyplot(st.session_state.abate_plot)
+                plt.close(st.session_state.abate_plot)
 
     st.markdown("---")
     st.subheader("Gerar Relatório PDF Completo")

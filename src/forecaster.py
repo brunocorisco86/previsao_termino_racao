@@ -48,9 +48,9 @@ class SiloForecaster:
             
             # Filtro para remover ruído de quedas abruptas para zero
             # Substitui 0 por NaN para interpolação
-            df_hourly['peso_silo'].replace(0, np.nan, inplace=True)
+            df_hourly['peso_silo'] = df_hourly['peso_silo'].replace(0, np.nan)
             # Interpola os valores NaN, preenchendo no máximo 3 horas consecutivas
-            df_hourly['peso_silo'].interpolate(method='linear', limit_direction='forward', limit=3, inplace=True)
+            df_hourly['peso_silo'] = df_hourly['peso_silo'].interpolate(method='linear', limit_direction='forward', limit=3)
 
             df_hourly.dropna(inplace=True)
             
@@ -217,3 +217,89 @@ class SiloForecaster:
         plt.tight_layout()
         
         return final_report_string, fig, df_entregas
+
+    def calculate_abate_feed(self, abate_datetime, jejum_horas):
+        """Calcula a necessidade de ração até a data de abate e gera um relatório e gráfico."""
+        if self.df_hourly is None or self.df_consumo is None:
+            raise ValueError("A projeção base deve ser executada primeiro.")
+
+        data_inicio_jejum = abate_datetime - timedelta(hours=jejum_horas)
+        ultima_data_dados = self.df_hourly.index[-1]
+
+        if data_inicio_jejum <= ultima_data_dados:
+            raise ValueError("A data de início do jejum deve ser no futuro.")
+
+        # Reutilizar o fator de consumo já calculado
+        self.df_hourly['consumo_real_kg'] = -self.df_hourly['peso_silo'].diff()
+        consumos_validos = self.df_hourly['consumo_real_kg'][(self.df_hourly['consumo_real_kg'] > 0) & (self.df_hourly['consumo_real_kg'] < 500)]
+        taxa_consumo_real_recente = consumos_validos.tail(24).mean()
+        taxa_consumo_real_recente_gr_ave_dia = (taxa_consumo_real_recente * 1000 * 24) / self.n_aves
+        idade_atual = self.df_hourly['idade'].iloc[-1]
+        consumo_tabela_atual = self.df_consumo[self.df_consumo['idade'] == idade_atual]['consumo_gr_ave_dia'].iloc[0]
+        fator_consumo = taxa_consumo_real_recente_gr_ave_dia / consumo_tabela_atual
+
+        # Projeção até o início do jejum
+        pesos_projetados, datas_projetadas, consumo_total_projetado = [], [], 0
+        peso_atual = self.df_hourly['peso_silo'].iloc[-1]
+        
+        horas_totais_projecao = int((data_inicio_jejum - ultima_data_dados).total_seconds() / 3600) + 1
+
+        for hora in range(1, horas_totais_projecao):
+            data_futura = ultima_data_dados + timedelta(hours=hora)
+            if data_futura > data_inicio_jejum:
+                break
+            
+            idade_futura = (data_futura.normalize().date() - self.data_alojamento).days + 1
+            
+            consumo_tabela_futuro = self.df_consumo[self.df_consumo['idade'] == idade_futura]['consumo_gr_ave_dia']
+            consumo_tabela_futuro = consumo_tabela_futuro.iloc[0] if not consumo_tabela_futuro.empty else self.df_consumo['consumo_gr_ave_dia'].iloc[-1]
+
+            consumo_projetado_kg_hr = (consumo_tabela_futuro / 1000 / 24) * self.n_aves * fator_consumo
+            
+            peso_atual -= consumo_projetado_kg_hr
+            consumo_total_projetado += consumo_projetado_kg_hr
+
+            pesos_projetados.append(peso_atual)
+            datas_projetadas.append(data_futura)
+
+        abate_forecast_series = pd.Series(pesos_projetados, index=datas_projetadas)
+
+        # Cálculos
+        peso_atual_silo = self.df_hourly['peso_silo'].iloc[-1]
+        necessidade_racao = consumo_total_projetado
+        ultima_entrega_necessaria = necessidade_racao - peso_atual_silo
+        if ultima_entrega_necessaria < 0:
+            ultima_entrega_necessaria = 0 # Já tem ração suficiente
+
+        # Gerar Relatório para Abate
+        idade_abate = (abate_datetime.date() - self.data_alojamento).days + 1
+        report = f"""
+        RELATÓRIO DE PROJEÇÃO PARA ABATE
+        -----------------------------------
+        - Data do Abate: {abate_datetime.strftime('%d/%m/%Y %H:%M')}
+        - Idade no Abate: {idade_abate} dias
+        - Início do Jejum: {data_inicio_jejum.strftime('%d/%m/%Y %H:%M')}
+        - Consumo Total Projetado até o Jejum: {necessidade_racao:.2f} kg
+        - Saldo Atual em Silo: {peso_atual_silo:.2f} kg
+        - Necessidade de Compra (Última Entrega): {ultima_entrega_necessaria:.2f} kg
+        """
+
+        # Gerar Gráfico para Abate
+        fig, ax = plt.subplots(figsize=(12, 7))
+        ax.plot(self.df_hourly['peso_silo'], label=f'Histórico - Aviário {self.aviario_selecionado}', marker='o')
+        ax.plot(abate_forecast_series, label='Projeção para Abate', linestyle='--', color='orange')
+        ax.axvline(x=data_inicio_jejum, color='purple', linestyle=':', label=f'Início Jejum: {data_inicio_jejum.strftime("%d/%m %H:%M")}')
+        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8)
+        
+        # Ponto final da projeção deve ser próximo de zero se a entrega for feita
+        saldo_final_simulado = peso_atual_silo + ultima_entrega_necessaria - necessidade_racao
+        ax.plot(data_inicio_jejum, saldo_final_simulado, 'x', color='red', markersize=10, label=f'Saldo Final Simulado: {saldo_final_simulado:.2f} kg')
+
+        ax.set_title(f'Projeção de Consumo para Abate - Aviário {self.aviario_selecionado}')
+        ax.set_xlabel('Data e Hora')
+        ax.set_ylabel('Peso da Ração (kg)')
+        ax.legend()
+        ax.grid(True)
+        plt.tight_layout()
+
+        return report, fig, necessidade_racao, ultima_entrega_necessaria
