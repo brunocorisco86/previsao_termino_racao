@@ -131,7 +131,8 @@ if uploaded_file is not None:
         value=None
     )
     hora_abate = st.sidebar.time_input(
-        "Hora do Abate"
+        "Hora do Abate",
+        step=1800
     )
     jejum_horas = st.sidebar.number_input(
         "Horas de Jejum",

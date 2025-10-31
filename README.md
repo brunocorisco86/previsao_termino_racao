@@ -1,25 +1,29 @@
 # 🐔 Silo Feed Forecaster
 
-Um sistema inteligente para análise e projeção da autonomia de ração em silos de aviários, ajudando a otimizar a gestão de estoque e evitar rupturas na alimentação.
+Um sistema inteligente para análise e projeção da autonomia de ração em silos de aviários, ajudando a otimizar a gestão de estoque, evitar rupturas na alimentação e planejar a entrega final de ração para o abate.
 
 ## ✨ Funcionalidades
 
 - **Análise Histórica:** Processa dados de sensores de peso para construir um histórico de consumo.
 - **Fator de Consumo Real:** Calcula a taxa de consumo real do lote e a compara com a tabela padrão da linhagem (Cobb/Ross), gerando um "fator de consumo" que ajusta a projeção à realidade do campo.
-- **Projeção Inteligente:** Estima a data e a hora em que a ração do silo irá acabar, com base no consumo real e na curva de consumo padrão.
+- **Projeção de Autonomia:** Estima a data e a hora em que a ração do silo irá acabar, com base no consumo real e na curva de consumo padrão.
+- **Projeção para o Abate:**
+    - Calcula a quantidade exata de ração necessária para finalizar o lote, visando um saldo zero no silo no momento do início do jejum pré-abate.
+    - Simula a entrega final de ração em um gráfico interativo, mostrando o aumento de saldo no silo e a curva de consumo até o esvaziamento completo no momento certo.
 - **Detecção de Entregas:** Identifica automaticamente os eventos de reabastecimento de ração no silo.
-- **Relatórios Completos:** Gera um relatório em PDF com as principais métricas de autonomia e um gráfico com a curva de esvaziamento projetada.
-- **Interface Interativa:** Coleta os dados do lote (aviário, data de alojamento, linhagem e número de aves) de forma interativa através de diálogos simples.
+- **Relatórios Completos:** Gera um relatório em PDF para download com as principais métricas de todos os aviários da granja.
+- **Interface Interativa:** Uma aplicação web amigável para carregar dados, inserir parâmetros e visualizar os resultados em tempo real.
 
 ## ⚙️ Como Funciona
 
 O fluxo de operação é o seguinte:
 
-1.  **Coleta de Dados:** O sistema solicita ao usuário as informações essenciais do lote.
-2.  **Processamento de Dados:** Ele importa e limpa os dados brutos dos sensores de peso (`Sensores.csv`).
-3.  **Cálculo de Consumo:** A taxa de consumo por hora é calculada, e o "fator de consumo" do lote é estabelecido.
-4.  **Projeção:** Utilizando o peso atual, a projeção da linhagem (`cobb.xlsx` ou `ross.xlsx`) e o fator de consumo, o sistema projeta o esvaziamento do silo hora a hora.
-5.  **Geração de Saídas:** Um relatório final e um gráfico são gerados e salvos na pasta `reports`.
+1.  **Carregamento de Dados:** O usuário carrega o arquivo `Sensores.csv` através da interface web.
+2.  **Definição de Parâmetros:** Na barra lateral, o usuário informa os dados do lote (aviário, data de alojamento, linhagem, nº de aves) e, opcionalmente, os dados para o abate (data, hora e tempo de jejum).
+3.  **Execução da Análise:**
+    - Ao clicar em **"Executar Projeção"**, o sistema analisa a autonomia do silo.
+    - Ao clicar em **"Calcular Ração para Abate"**, o sistema projeta a necessidade de ração para fechar o lote.
+4.  **Visualização de Resultados:** As métricas, relatórios e gráficos são exibidos diretamente na interface, em abas organizadas.
 
 ## 📋 Pré-requisitos
 
@@ -63,22 +67,24 @@ Para extrair o arquivo `Sensores.csv` da plataforma eProdutor, siga os passos:
     ![Passo 6](images/6%20-%20filtro%20data.png)
 7.  Clique em **'BUSCAR'**.
     ![Passo 7](images/7%20-%20Buscar.png)
-8.  Clique no botão **'Exportar CSV'** e salve o arquivo dentro da pasta `assets`.
+8.  Clique no botão **'Exportar CSV'** e salve o arquivo. Você irá carregá-lo na interface da aplicação.
     ![Passo 8](images/8%20-%20Exportar%20CSV.png)
 
 ## ▶️ Execução
 
-Para iniciar a análise, execute o seguinte comando na raiz do projeto:
+Para iniciar a aplicação, execute o seguinte comando na raiz do projeto:
 
 ```bash
-python main.py
+streamlit run app.py
 ```
 
-O programa abrirá janelas de diálogo para solicitar as informações necessárias.
+A aplicação será aberta automaticamente no seu navegador web.
 
 ## 📊 Estrutura de Saída
 
-Os resultados são salvos na pasta `reports/`:
+Os resultados são exibidos diretamente na interface da aplicação:
 
--   `relatorio_final_aviario_[...].pdf`: Um relatório detalhado com o peso atual, a autonomia estimada em dias e horas, a data prevista de esgotamento e um histórico de entregas de ração.
--   `projecao_aviario_[...].pdf`: Um gráfico visual mostrando o histórico de peso do silo e a curva de projeção de esvaziamento.
+-   **Métricas Principais:** Cartões com o peso atual, idade do lote, autonomia estimada e data de esgotamento.
+-   **Gráfico de Projeção:** Um gráfico visual mostrando o histórico de peso do silo e a curva de projeção de esvaziamento.
+-   **Projeção para Abate:** Uma aba dedicada mostra o relatório de necessidade de ração e o gráfico que simula a última entrega e o consumo até o jejum.
+-   **Download de Relatório:** Um botão permite gerar e baixar um relatório consolidado em PDF para toda a granja.
