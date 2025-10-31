@@ -42,15 +42,26 @@ class PDFReportGenerator(FPDF):
 
         self.ln(10)
 
-    def add_aviary_report(self, report_string, plot_fig, aviario_num):
+    def add_aviary_report(self, report_string, plot_fig, aviario_num, abate_plot_fig=None, abate_report_string=None):
         self.add_page()
         self.chapter_title(f'Aviário {aviario_num}')
         self.chapter_body(report_string)
         self.add_plot(plot_fig)
+        if abate_plot_fig:
+            self.chapter_title(f'Projeção para Abate - Aviário {aviario_num}')
+            if abate_report_string:
+                self.chapter_body(abate_report_string)
+            self.add_plot(abate_plot_fig)
 
     def generate_full_report(self, forecaster_instances, output_path):
         self.alias_nb_pages()
         for aviario_num, forecaster_instance in sorted(forecaster_instances.items()):
-            self.add_aviary_report(forecaster_instance.report_string, forecaster_instance.plot_fig, aviario_num)
+            self.add_aviary_report(
+                forecaster_instance.report_string,
+                forecaster_instance.plot_fig,
+                aviario_num,
+                abate_plot_fig=getattr(forecaster_instance, 'abate_plot', None),
+                abate_report_string=getattr(forecaster_instance, 'abate_report', None)
+            )
         
         self.output(output_path)

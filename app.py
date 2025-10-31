@@ -292,6 +292,16 @@ if uploaded_file is not None:
                             idade_diluicao_start=idade_diluicao_start,
                             sobra_inicial_kg=sobra_inicial_kg
                         )
+                        
+                        # Also calculate and store abate forecast if data is available
+                        if data_abate and hora_abate:
+                            abate_datetime = datetime.combine(data_abate, hora_abate)
+                            # This call will now store the plot in temp_forecaster.abate_plot
+                            temp_forecaster.calculate_abate_feed(
+                                abate_datetime=abate_datetime,
+                                jejum_horas=jejum_horas
+                            )
+
                         forecaster_instances_for_pdf[av_num] = temp_forecaster
                     except Exception as e:
                         st.warning(f"Não foi possível gerar o relatório para o aviário {av_num}: {e}")

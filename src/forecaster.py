@@ -21,6 +21,8 @@ class SiloForecaster:
         self.forecast_series = None
         self.report_string = None
         self.plot_fig = None
+        self.abate_plot = None
+        self.abate_report = None
 
     def run_forecast(self, aviario_selecionado, data_alojamento, linhagem, n_aves, idade_diluicao_start, sobra_inicial_kg):
         """Executa o pipeline completo de previsão com os dados fornecidos pelo Streamlit."""
@@ -289,6 +291,8 @@ class SiloForecaster:
         - Necessidade de Compra (Última Entrega): {ultima_entrega_necessaria:.2f} kg
         """
 
+        self.abate_report = report
+
         # Gerar Gráfico para Abate
         fig, ax = plt.subplots(figsize=(12, 7))
         # 1. Plot histórico
@@ -324,5 +328,7 @@ class SiloForecaster:
         ax.legend()
         ax.grid(True)
         plt.tight_layout()
+
+        self.abate_plot = fig
 
         return report, fig, necessidade_racao, ultima_entrega_necessaria
