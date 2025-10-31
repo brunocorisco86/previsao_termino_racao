@@ -252,9 +252,16 @@ if uploaded_file is not None:
         if "Projeção para Abate" in tab_titles:
             with tabs[3]:
                 st.subheader("Resultados do Cálculo para Abate")
-                st.metric("Necessidade de Ração até o Jejum", f"{st.session_state.necessidade_racao:,.2f} kg".replace(",", "."))
-                st.metric("Última Entrega de Ração Necessária", f"{st.session_state.ultima_entrega_necessaria:,.2f} kg".replace(",", "."))
                 
+                col1_abate, col2_abate, col3_abate = st.columns(3)
+                
+                peso_atual_silo = st.session_state.forecaster.df_hourly['peso_silo'].iloc[-1]
+                col1_abate.metric("Posição Atual do Silo", f"{peso_atual_silo:,.2f} kg".replace(",", "."))
+                
+                col2_abate.metric("Necessidade de Ração até o Jejum", f"{st.session_state.necessidade_racao:,.2f} kg".replace(",", "."))
+                
+                col3_abate.metric("Última Entrega de Ração Necessária", f"{st.session_state.ultima_entrega_necessaria:,.2f} kg".replace(",", "."))
+
                 st.markdown(st.session_state.abate_report)
                 st.pyplot(st.session_state.abate_plot)
                 plt.close(st.session_state.abate_plot)
