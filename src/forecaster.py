@@ -45,7 +45,7 @@ class SiloForecaster:
             df_filtrado['idade'] = (df_filtrado.index.normalize() - pd.Timestamp(self.data_alojamento)).days + 1
             
             df_hourly = pd.DataFrame()
-            resampled = df_filtrado.groupby('channel')['value'].resample('h').mean()
+            resampled = df_filtrado.groupby('channel')['value'].resample('h').median()
             df_hourly['peso_silo'] = resampled.unstack(level='channel').sum(axis=1)
             
             # Filtro para remover ruído de quedas abruptas para zero
@@ -85,7 +85,7 @@ class SiloForecaster:
         if consumos_validos.empty:
             raise ValueError("Não foi possível calcular uma taxa de consumo válida a partir dos dados. Verifique se há dados suficientes ou se os valores de peso estão corretos.")
 
-        taxa_consumo_real_recente = consumos_validos.tail(24).mean()
+        taxa_consumo_real_recente = consumos_validos.tail(24).median()
         
         # Calcular a taxa de consumo real por ave por dia (em gramas/ave/dia)
         # taxa_consumo_real_recente está em kg/hora
@@ -234,7 +234,7 @@ class SiloForecaster:
         # Reutilizar o fator de consumo já calculado
         self.df_hourly['consumo_real_kg'] = -self.df_hourly['peso_silo'].diff()
         consumos_validos = self.df_hourly['consumo_real_kg'][(self.df_hourly['consumo_real_kg'] > 0) & (self.df_hourly['consumo_real_kg'] < 500)]
-        taxa_consumo_real_recente = consumos_validos.tail(24).mean()
+        taxa_consumo_real_recente = consumos_validos.tail(24).median()
         taxa_consumo_real_recente_gr_ave_dia = (taxa_consumo_real_recente * 1000 * 24) / self.n_aves
         idade_atual = self.df_hourly['idade'].iloc[-1]
         consumo_tabela_atual = self.df_consumo[self.df_consumo['idade'] == idade_atual]['consumo_gr_ave_dia'].iloc[0]
