@@ -35,7 +35,7 @@ if __name__ == "__main__":
         print("Erro: O arquivo CSV carregado não contém a coluna 'collector'. Verifique o formato do arquivo.")
         exit()
 
-    df_sensores_completo['aviario_num'] = pd.to_numeric(df_sensores_completo['collector'].str.extract('(\d+)', expand=False), errors='coerce')
+    df_sensores_completo['aviario_num'] = pd.to_numeric(df_sensores_completo['collector'].str.extract(r'(\d+)', expand=False), errors='coerce')
     df_sensores_completo.dropna(subset=['aviario_num'], inplace=True)
     df_sensores_completo['aviario_num'] = df_sensores_completo['aviario_num'].astype(int)
     aviarios_disponiveis = sorted(df_sensores_completo['aviario_num'].unique())
@@ -84,11 +84,13 @@ if __name__ == "__main__":
             reports_folder=reports_folder
         )
         
-        report_string, plot_fig = forecaster.run_forecast(
+        report_string, plot_fig, df_entregas = forecaster.run_forecast(
             aviario_selecionado=aviario_selecionado,
             data_alojamento=data_alojamento,
             linhagem=linhagem,
-            n_aves=n_aves
+            n_aves=n_aves,
+            idade_diluicao_start=19,
+            sobra_inicial_kg=0.0
         )
 
         print("\n--- Projeção Concluída ---")
